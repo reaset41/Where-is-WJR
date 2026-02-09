@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Google Sheets Map Visualization</title>
+    
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: Arial, sans-serif;
+        }
+        
+        #map {
+            height: 100vh;
+            width: 100%;
+        }
+        
+        .config-panel {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: white;
+            padding: 15px;
+            border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+            z-index: 1000;
+            max-width: 300px;
+        }
+        
+        .config-panel input {
+            width: 100%;
+            padding: 8px;
+            margin: 5px 0;
+            box-sizing: border-box;
+        }
+        
+        .config-panel button {
+            width: 100%;
+            padding: 10px;
+            background: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+            margin-top: 5px;
+        }
+        
+        .config-panel button:hover {
+            background: #45a049;
+        }
+        
+        .status {
+            margin-top: 10px;
+            padding: 8px;
+            border-radius: 3px;
+            font-size: 12px;
+        }
+        
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+        }
+        
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        
+        .status.loading {
+            background: #d1ecf1;
+            color: #0c5460;
+        }
+    </style>
+</head>
+<body>
+    <div id="map"></div>
+    
+    <div class="config-panel">
+        <h3 style="margin-top: 0;">Google Sheets Map</h3>
+        <label for="sheetId">Google Sheet ID:</label>
+        <input type="text" id="sheetId" placeholder="Paste your sheet ID here">
+        <label for="sheetName">Sheet Name (optional):</label>
+        <input type="text" id="sheetName" placeholder="Sheet1" value="Sheet1">
+        <button onclick="loadData()">Load Map Data</button>
+        <button onclick="togglePanel()" style="background: #808080;">Hide Panel</button>
+        <div id="status"></div>
+    </div>
+
+    <!-- Leaflet JavaScript -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    
+    <script>
+        // ===== CONFIGURATION =====
+        // Paste your Google Sheet ID here (the long string from your sheet URL)
+        // Example: "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms"
+        const DEFAULT_SHEET_ID = "1VHbSYNp_x1pEolA72OssSUYRXIobJcL7ekSKEpFRl-E";
+        const DEFAULT_SHEET_NAME = "Sheet1";
+        // =========================
+        
+        // Initialize the map (centered on US)
+        const map = L.map('map').setView([39.8283, -98.5795], 4);
+        
+        // Add OpenStreetMap tiles
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap contributors',
+            maxZoom: 19
+        }).addTo(map);
+        
+        // Restrict map to US bounds
+        const usBounds = L.latLngBounds(
+            L.latLng(24.396308, -125.0),  // Southwest corner
+            L.latLng(49.384358, -66.93457)  // Northeast corner
+        );
+        map.setMaxBounds(usBounds);
+        map.options.minZoom = 4;
+        
+        // Store map layers
+        let markers = [];
+        let routes = [];
+        
+        function setStatus(message, type) {
+            const statusDiv = document.getElementById('status');
+            statusDiv.textContent = message;
+            statusDiv.className = 'status ' + type;
+        }
+        
+        function togglePanel() {
+            const panel = document.querySelector('.config-panel');
+            const button = event.target;
+            if (panel.style.display === 'none') {
+                panel.style.display = 'block';
+                button.textContent = 'Hide Panel';
+            } else {
+                panel.style.display = 'none';
+                button.textContent = 'Show Panel';
+            }
+        }
+        
+        function clearMap() {
+            // Remove existing markers
+            markers.forEach(marker => map.removeLayer(marker));
+            markers = [];
+            
+            // Remove existing routes
+            routes.forEach(route => map.removeLayer(route));
+            routes = [];
+        }
+        
+        async function loadData() {
+            const sheetId = document.getElementById('sheetId').value.trim();
+            const sheetName = document.getElementById('sheetName').value.trim() || 'Sheet1';
+            
+            if (!sheetId) {
+                setStatus('Please enter a Google Sheet ID', 'error');
+                return;
+            }
+            
+            setStatus('Loading data...', 'loading');
+            clearMap();
+            
+            try {
+                // Use Google Sheets JSON API
+                const url = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(sheetName)}`;
+                
+                const response = await fetch(url);
+                
+                if (!response.ok) {
+                    throw new Error('Failed to fetch data. Make sure the sheet is published and the ID is correct.');
+                }
+                
+                const text = await response.text();
+                
+                // Parse Google's JSON response (it's wrapped in a function call)
+                const json = JSON.parse(text.substring(47).slice(0, -2));
+                
+                if (!json.table || !json.table.rows) {
+                    throw new Error('Invalid data format');
+                }
+                
+                const rows = json.table.rows;
+                const routePoints = [];
+                let markerCount = 0;
+                let routePointCount = 0;
+                
+                // Process each row
+                rows.forEach((row, index) => {
+                    // Skip if row is empty
+                    if (!row.c || !row.c[0]) return;
+                    
+                    const type = row.c[0]?.v?.toString().toLowerCase().trim();
+                    const longitude = parseFloat(row.c[1]?.v);
+                    const latitude = parseFloat(row.c[2]?.v);
+                    
+                    // Validate coordinates
+                    if (isNaN(latitude) || isNaN(longitude)) {
+                        console.warn(`Row ${index + 1}: Invalid coordinates`);
+                        return;
+                    }
+                    
+                    if (type === 'marker') {
+                        // Create red marker
+                        const redIcon = L.icon({
+                            iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
+                            shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
+                            iconSize: [25, 41],
+                            iconAnchor: [12, 41],
+                            popupAnchor: [1, -34],
+                            shadowSize: [41, 41]
+                        });
+                        
+                        const marker = L.marker([latitude, longitude], {
+                            icon: redIcon
+                        }).addTo(map);
+                        
+                        marker.bindPopup(`<b>Marker</b><br>Lat: ${latitude}<br>Lng: ${longitude}`);
+                        markers.push(marker);
+                        markerCount++;
+                        
+                    } else if (type === 'route') {
+                        // Store route points
+                        routePoints.push([latitude, longitude]);
+                        routePointCount++;
+                    }
+                });
+                
+                // Draw route if we have points
+                if (routePoints.length > 0) {
+                    const polyline = L.polyline(routePoints, {
+                        color: 'blue',
+                        weight: 4,
+                        opacity: 0.7
+                    }).addTo(map);
+                    
+                    polyline.bindPopup(`<b>Route</b><br>${routePoints.length} points`);
+                    routes.push(polyline);
+                }
+                
+                // Fit map to show all markers and routes
+                const allPoints = [...markers.map(m => m.getLatLng()), ...routePoints.map(p => L.latLng(p))];
+                if (allPoints.length > 0) {
+                    const bounds = L.latLngBounds(allPoints);
+                    map.fitBounds(bounds, { padding: [50, 50] });
+                }
+                
+                setStatus(`Loaded: ${markerCount} markers, ${routePointCount} route points`, 'success');
+                
+            } catch (error) {
+                console.error('Error loading data:', error);
+                setStatus(`Error: ${error.message}`, 'error');
+            }
+        }
+        
+        // Load data on Enter key
+        document.getElementById('sheetId').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                loadData();
+            }
+        });
+        
+        document.getElementById('sheetName').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                loadData();
+            }
+        });
+        
+        // Auto-load data on page load if Sheet ID is configured
+        window.addEventListener('load', function() {
+            if (DEFAULT_SHEET_ID && DEFAULT_SHEET_ID !== "YOUR_SHEET_ID_HERE") {
+                document.getElementById('sheetId').value = DEFAULT_SHEET_ID;
+                document.getElementById('sheetName').value = DEFAULT_SHEET_NAME;
+                loadData();
+            }
+        });
+    </script>
+</body>
+</html>
