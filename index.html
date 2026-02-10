@@ -123,7 +123,7 @@
         let markers = [];
         let routes = [];
         
-        function setStatus(message, type) {
+                function setStatus(message, type) {
             const statusDiv = document.getElementById('status');
             statusDiv.textContent = message;
             statusDiv.className = 'status ' + type;
@@ -131,14 +131,16 @@
         
         function togglePanel() {
             const panel = document.querySelector('.config-panel');
-            const button = event.target;
-            if (panel.style.display === 'none') {
-                panel.style.display = 'block';
-                button.textContent = 'Hide Panel';
-            } else {
-                panel.style.display = 'none';
-                button.textContent = 'Show Panel';
-            }
+            const showBtn = document.getElementById('showPanelBtn');
+            panel.style.display = 'none';
+            showBtn.style.display = 'block';
+        }
+        
+        function showPanel() {
+            const panel = document.querySelector('.config-panel');
+            const showBtn = document.getElementById('showPanelBtn');
+            panel.style.display = 'block';
+            showBtn.style.display = 'none';
         }
         
         function clearMap() {
