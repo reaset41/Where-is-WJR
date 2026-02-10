@@ -20,97 +20,29 @@
             width: 100%;
         }
         
-        .config-panel {
+        .banner {
             position: absolute;
-            top: 10px;
-            right: 10px;
-            background: white;
-            padding: 15px;
-            border-radius: 5px;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.3);
-            z-index: 1000;
-            max-width: 300px;
-        }
-        
-        .config-panel input {
-            width: 100%;
-            padding: 8px;
-            margin: 5px 0;
-            box-sizing: border-box;
-        }
-        
-        .config-panel button {
-            width: 100%;
-            padding: 10px;
-            background: #4CAF50;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #2c3e50;
             color: white;
-            border: none;
-            border-radius: 3px;
-            cursor: pointer;
-            margin-top: 5px;
-        }
-        
-        .config-panel button:hover {
-            background: #45a049;
-        }
-        
-        .show-panel-btn {
-            position: absolute;
-            top: 10px;
-            right: 10px;
-            background: white;
-            padding: 10px 15px;
-            border-radius: 5px;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+            padding: 20px 60px;
+            border-radius: 10px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.4);
             z-index: 1000;
-            cursor: pointer;
-            border: none;
-            font-size: 14px;
-            display: none;
-        }
-        
-        .show-panel-btn:hover {
-            background: #f0f0f0;
-        }
-        
-        .status {
-            margin-top: 10px;
-            padding: 8px;
-            border-radius: 3px;
-            font-size: 12px;
-        }
-        
-        .status.success {
-            background: #d4edda;
-            color: #155724;
-        }
-        
-        .status.error {
-            background: #f8d7da;
-            color: #721c24;
-        }
-        
-        .status.loading {
-            background: #d1ecf1;
-            color: #0c5460;
+            font-size: 36px;
+            font-weight: bold;
+            font-family: 'Arial Black', Arial, sans-serif;
+            letter-spacing: 2px;
+            text-align: center;
         }
     </style>
 </head>
 <body>
     <div id="map"></div>
     
-    <button class="show-panel-btn" id="showPanelBtn" onclick="showPanel()">⚙️ Settings</button>
-    
-    <div class="config-panel">
-        <h3 style="margin-top: 0;">Google Sheets Map</h3>
-        <label for="sheetId">Google Sheet ID:</label>
-        <input type="text" id="sheetId" placeholder="Paste your sheet ID here">
-        <label for="sheetName">Sheet Name (optional):</label>
-        <input type="text" id="sheetName" placeholder="Sheet1" value="Sheet1">
-        <button onclick="loadData()">Load Map Data</button>
-        <button onclick="togglePanel()" style="background: #808080;">Hide Panel</button>
-        <div id="status"></div>
-    </div>
+    <div class="banner">Where is WJR?</div>
 
     <!-- Leaflet JavaScript -->
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -118,9 +50,18 @@
     <script>
         // ===== CONFIGURATION =====
         // Paste your Google Sheet ID here (the long string from your sheet URL)
-        // Example: "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms"
-        const DEFAULT_SHEET_ID = "YOUR_SHEET_ID_HERE";
+
+        const DEFAULT_SHEET_ID = "1VHbSYNp_x1pEolA72OssSUYRXIobJcL7ekSKEpFRl-E";
         const DEFAULT_SHEET_NAME = "Sheet1";
+        
+        // City flag markers
+        const CITY_FLAGS = [
+            { name: "Brownsburg, IN", lat: 39.84332, lng: -86.39795 },
+            { name: "Louisville, KY", lat: 38.25424, lng: -85.75941 },
+            { name: "Nashville, TN", lat: 36.16257, lng: -86.78154 },
+            { name: "McKinney, TX", lat: 33.19831, lng: -96.63894 },
+            { name: "Fort Collins, CO", lat: 40.58526, lng: -105.0843 }
+        ];
         // =========================
         
         // Initialize the map (centered on US)
@@ -144,24 +85,25 @@
         let markers = [];
         let routes = [];
         
-        function setStatus(message, type) {
-            const statusDiv = document.getElementById('status');
-            statusDiv.textContent = message;
-            statusDiv.className = 'status ' + type;
-        }
-        
-        function togglePanel() {
-            const panel = document.querySelector('.config-panel');
-            const showBtn = document.getElementById('showPanelBtn');
-            panel.style.display = 'none';
-            showBtn.style.display = 'block';
-        }
-        
-        function showPanel() {
-            const panel = document.querySelector('.config-panel');
-            const showBtn = document.getElementById('showPanelBtn');
-            panel.style.display = 'block';
-            showBtn.style.display = 'none';
+        // Add city flag markers
+        function addCityFlags() {
+            const flagIcon = L.icon({
+                iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-green.png',
+                shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
+                iconSize: [25, 41],
+                iconAnchor: [12, 41],
+                popupAnchor: [1, -34],
+                shadowSize: [41, 41]
+            });
+            
+            CITY_FLAGS.forEach(city => {
+                const marker = L.marker([city.lat, city.lng], {
+                    icon: flagIcon
+                }).addTo(map);
+                
+                marker.bindPopup(`<b>📍 ${city.name}</b>`);
+                markers.push(marker);
+            });
         }
         
         function clearMap() {
@@ -175,15 +117,9 @@
         }
         
         async function loadData() {
-            const sheetId = document.getElementById('sheetId').value.trim();
-            const sheetName = document.getElementById('sheetName').value.trim() || 'Sheet1';
+            const sheetId = DEFAULT_SHEET_ID;
+            const sheetName = DEFAULT_SHEET_NAME;
             
-            if (!sheetId) {
-                setStatus('Please enter a Google Sheet ID', 'error');
-                return;
-            }
-            
-            setStatus('Loading data...', 'loading');
             clearMap();
             
             try {
@@ -212,8 +148,6 @@
                 
                 const rows = json.table.rows;
                 const routePoints = [];
-                let markerCount = 0;
-                let routePointCount = 0;
                 
                 // Process each row
                 rows.forEach((row, index) => {
@@ -247,12 +181,10 @@
                         
                         marker.bindPopup(`<b>Marker</b><br>Lat: ${latitude}<br>Lng: ${longitude}`);
                         markers.push(marker);
-                        markerCount++;
                         
                     } else if (type === 'route') {
                         // Store route points
                         routePoints.push([latitude, longitude]);
-                        routePointCount++;
                     }
                 });
                 
@@ -275,38 +207,19 @@
                     map.fitBounds(bounds, { padding: [50, 50] });
                 }
                 
-                setStatus(`Loaded: ${markerCount} markers, ${routePointCount} route points`, 'success');
-                
             } catch (error) {
                 console.error('Error loading data:', error);
-                setStatus(`Error: ${error.message}`, 'error');
             }
         }
         
-        // Load data on Enter key
-        document.getElementById('sheetId').addEventListener('keypress', function(e) {
-            if (e.key === 'Enter') {
-                loadData();
-            }
-        });
-        
-        document.getElementById('sheetName').addEventListener('keypress', function(e) {
-            if (e.key === 'Enter') {
-                loadData();
-            }
-        });
-        
-        // Auto-load data on page load if Sheet ID is configured
+        // Auto-load data on page load
         window.addEventListener('load', function() {
-            if (DEFAULT_SHEET_ID && DEFAULT_SHEET_ID !== "YOUR_SHEET_ID_HERE") {
-                document.getElementById('sheetId').value = DEFAULT_SHEET_ID;
-                document.getElementById('sheetName').value = DEFAULT_SHEET_NAME;
+            addCityFlags();
+            if (DEFAULT_SHEET_ID && DEFAULT_SHEET_ID !== "1VHbSYNp_x1pEolA72OssSUYRXIobJcL7ekSKEpFRl-E") {
                 loadData();
-                // Hide panel after auto-loading and show settings button
-                document.querySelector('.config-panel').style.display = 'none';
-                document.getElementById('showPanelBtn').style.display = 'block';
             }
         });
     </script>
 </body>
 </html>
+
