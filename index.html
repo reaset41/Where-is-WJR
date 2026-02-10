@@ -212,12 +212,17 @@
             }
         }
         
-        window.addEventListener('load', function() {
-            addCityFlags();
-            if (DEFAULT_SHEET_ID && DEFAULT_SHEET_ID !== "YOUR_SHEET_ID_HERE") {
-                loadData();
-            }
-        });
+
+  window.addEventListener('load', function() {
+    if (DEFAULT_SHEET_ID && DEFAULT_SHEET_ID !== "YOUR_SHEET_ID_HERE") {
+      loadData().then(() => {
+        addCityFlags();  // add after data load so clearMap() doesn't wipe them
+      });
+    } else {
+      addCityFlags();
+    }
+  });
+
     </script>
 </body>
 </html>
